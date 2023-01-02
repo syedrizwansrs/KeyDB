@@ -1,71 +1,36 @@
-name: CI
+name: C/C++ CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
+  build:
 
-  test-ubuntu-latest:
     runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-      with:
-        submodules: recursive
-    - name: make
-      run: |
-          sudo apt-get update
-          sudo apt-get -y remove libzstd || true
-          sudo apt-get -y install uuid-dev libcurl4-openssl-dev libbz2-dev zlib1g-dev libsnappy-dev liblz4-dev libzstd-dev libgflags-dev
-          make BUILD_TLS=yes -j2 KEYDB_CFLAGS='-Werror' KEYDB_CXXFLAGS='-Werror'
-    - name: gen-cert
-      run: ./utils/gen-test-certs.sh
-    - name: test-tls
-      run: |
-        sudo apt-get -y install tcl tcl-tls
-        ./runtest --clients 1 --verbose --tls --config server-threads 3
-    - name: cluster-test
-      run: |
-        ./runtest-cluster --tls --config server-threads 3
-    - name: sentinel test
-      run: |
-          ./runtest-sentinel
-    - name: module tests
-      run: |
-          ./runtest-moduleapi
-    - name: rotation test
-      run: |
-          ./runtest-rotation
-        
-  build-ubuntu-old:
-    runs-on: ubuntu-20.04
-    steps:
-    - uses: actions/checkout@v2
-      with:
-        submodules: recursive
-    - name: make -j2
-      run: | 
-        sudo apt-get update
-        sudo apt-get -y remove libzstd || true
-        sudo apt-get -y install uuid-dev libcurl4-openssl-dev libbz2-dev zlib1g-dev libsnappy-dev liblz4-dev libzstd-dev libgflags-dev
-        make -j2
 
-  build-macos-latest:
-    runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v2
+    - name: Install Dependancies
+      run: sudo apt-get install -y build-essential libsystemd-dev nasm autotools-dev autoconf libjemalloc-dev tcl tcl-dev uuid-dev libcurl4-openssl-dev libbz2-dev libzstd-dev liblz4-dev libsnappy-dev libssl-dev pbuilder
+    - uses: actions/checkout@v3
       with:
-        submodules: recursive
+        submodules: 'true'
     - name: make
-      run: make KEYDB_CFLAGS='-Werror' KEYDB_CXXFLAGS='-Werror' -j2
+      run: make USE_SYSTEMD=yes
+      
+    - name: Build Packages
+      run: cd ./KeyDB/KeyDB/pkg/deb/ && ./deb-buildsource.sh
 
-  build-libc-malloc:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
+    - name: Store Debian package artifacts
+      uses: actions/upload-artifact@v2
       with:
-        submodules: recursive
-    - name: make
-      run: |
-          sudo apt-get update
-          sudo apt-get -y remove libzstd || true
-          sudo apt-get -y install uuid-dev libcurl4-openssl-dev libbz2-dev zlib1g-dev libsnappy-dev liblz4-dev libzstd-dev libgflags-dev
-          make KEYDB_CFLAGS='-Werror' KEYDB_CXXFLAGS='-Werror' MALLOC=libc -j2
+        name: Debian binary package files
+        path: '*.deb'
+
+    - name: Store Debian package build info
+      uses: actions/upload-artifact@v2
+      with:
+        name: Debian buildinfo file
+        path: '*.buildinfo'
